@@ -11,10 +11,6 @@ void runTerminal() {
                   << "  auto-discover <addr> <secs> <count>    - Automatically discover routes every N seconds\n"
                   << "                                           for count times (0 = infinite)\n"
                   << "  verify                                 - Verify current routes\n"
-<<<<<<< HEAD
-=======
-                  << "  leave                                  - Leave the swarm\n"
->>>>>>> e2255450aab6a799ed3404f06f1d3756fbacb4b5
                   << "  (Ctrl+D to exit)\n\n";
 
         std::unique_ptr<std::thread> autoDiscoverThread;
@@ -80,12 +76,6 @@ void runTerminal() {
                 else if (command == "verify") {
                     client.sendData(json{{"type", VERIFY_ROUTE}}.dump());
                 }
-<<<<<<< HEAD
-=======
-                else if (command == "leave") {
-                    client.sendData(json{{"type", INIT_LEAVE}}.dump());
-                }
->>>>>>> e2255450aab6a799ed3404f06f1d3756fbacb4b5
                 else {
                     std::cout << "Unknown command. Use discover, auto-discover, verify, or leave\n";
                 }
