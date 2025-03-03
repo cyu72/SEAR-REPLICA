@@ -17,7 +17,7 @@ colorama.init(autoreset=True)
 matrix = []
 
 parser = argparse.ArgumentParser(description='TBD')
-parser.add_argument('--drone_count', type=int, default=21, help='Specify number of drones in simulation')
+parser.add_argument('--drone_count', type=int, default=26, help='Specify number of drones in simulation')
 parser.add_argument('--startup', action='store_true', help='Complete initial startup process (minikube)')
 parser.add_argument('--tesla_disclosure_time', type=int, default=10, help='Disclosure period in seconds of every TESLA key disclosure message')
 parser.add_argument('--max_hop_count', type=int, default=25, help='Maximium number of nodes we can route messages through')
@@ -50,11 +50,11 @@ def generate_hardcoded_matrix(n, numDrones):
         [0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 19, 0],
         [0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0],
         [0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 21, 0],
-        [0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0],
-        [3, 4, 1, 2, 6, 7, 8, 0, 0, 0, 0, 0],
-        [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 22, 0],
+        [0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 23, 0],
+        [3, 4, 1, 2, 6, 7, 8, 0, 0, 0, 24, 0],
+        [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 26, 0],
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -358,8 +358,7 @@ def main():
     global matrix, processes, threads
 
     droneNum = args.drone_count
-    droneImage = "cyu72/drone:simulation-terminal"
-    gcsImage = "cyu72/gcs:simulation"
+    droneImage = "cyu72/sear:simulation-terminal"
 
     controller_addr = input("Enter the controller address: ")
 
@@ -471,59 +470,6 @@ spec:
             file.write(delim)
             nodePort += 1
 
-        gcs = f"""apiVersion: v1
-kind: Pod
-metadata:
-  name: gcs
-  namespace: default
-  labels:
-    app: gcs
-    tier: drone
-spec:
-  hostname: gcs
-  containers: 
-    - name: gcs
-      image: {gcsImage}
-      imagePullPolicy: Always
-      stdin: true
-      tty: true
-      env:
-        - name: SKIP_VERIFICATION
-          value: "{args.SKIP_VERIFICATION}"
-      ports:
-        - name: main-port
-          protocol: TCP
-          containerPort: 65456
-        - name: udp-test-port
-          protocol: UDP
-          containerPort: 65457
-        - name: flask-port
-          protocol: TCP
-          containerPort: 5000"""
-        
-        gcs_service = f"""apiVersion: v1
-kind: Service
-metadata:
-  name: gcs-service
-spec:
-  type: LoadBalancer
-  selector:
-    app: gcs
-    tier: drone
-  ports:
-  - name: gcs-port
-    protocol: TCP
-    port: 65456
-    targetPort: 65456
-  - name: udp-test-port
-    protocol: UDP
-    port: 65457
-    targetPort: 65457
-  - name: flask-port
-    protocol: TCP
-    port: 5000
-    targetPort: 5000"""
-        
         configMap = f"""apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -538,7 +484,7 @@ data:
       - 192.168.1.101-192.168.1.150
 """
         
-        file.write(gcs + "\n" + delim + gcs_service + "\n" + delim + configMap + "\n")
+        file.write(configMap + "\n")
         file.close()
         
     valid_config = False

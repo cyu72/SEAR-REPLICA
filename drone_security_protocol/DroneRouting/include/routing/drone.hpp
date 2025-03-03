@@ -42,7 +42,6 @@
 #include "ipc_server.hpp"
 #include "routingMap.hpp"
 #include "routingTableEntry.hpp"
-#include "pki_client.hpp"
 #include "network_adapters/kube_udp_interface.hpp"
 #include "network_adapters/tcp_interface.hpp"
 
@@ -201,7 +200,6 @@ class drone {
         std::deque<string> hashChainCache; 
 
         int sendData(string containerName, const string& msg);
-        void sendDataUDP(const string&, const string&);
         string sha256(const string& inn);
         void initMessageHandler(json& data);
         void routeRequestHandler(json& data);
@@ -214,8 +212,6 @@ class drone {
         void neighborDiscoveryFunction();
         void neighborDiscoveryHelper();
         void processPendingRoutes();
-        void leaveSwarm();
-        void leaveHandler(json& data);
         string getHashFromChain(unsigned long seqNum, unsigned long hopCount);
 
         const uint8_t max_hop_count = std::stoul((std::getenv("MAX_HOP_COUNT"))); // Maximum number of nodes we can/allow route through
@@ -233,16 +229,6 @@ class drone {
         string generate_nonce(const size_t length = 16);
 
         std::shared_ptr<spdlog::logger> logger;
-
-        std::unique_ptr<PKIClient> pki_client;
-        std::set<std::string> validatedNodes;
-        std::mutex validationMutex;
-        std::promise<void> init_promise;
-        bool cert_received = false;
-        bool isValidatedSender(const std::string& sender);
-        void markSenderAsValidated(const std::string& sender);
-        std::vector<uint8_t> generateChallengeData(size_t length = 32);
-        void challengeResponseHandler(json& data);
 
         void handleIPCMessage(const std::string&);
 };
