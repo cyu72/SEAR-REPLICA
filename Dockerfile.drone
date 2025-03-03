@@ -31,6 +31,7 @@ RUN apk add --no-cache libstdc++ openssl python3 libcurl
 
 WORKDIR /app
 
+# Copy built artifacts
 COPY --from=builder /app/drone_security_protocol/DroneRouting/build/libdrone_routing.so /usr/local/lib/
 COPY --from=builder /app/drone_security_protocol/DroneRouting/build/drone_app /app/drone_app
 COPY --from=builder /usr/local/lib/libcpr.so* /usr/local/lib/

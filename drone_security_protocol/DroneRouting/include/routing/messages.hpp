@@ -359,7 +359,7 @@ struct RREP : public MESSAGE {
 
 };
 
-struct INIT_MESSAGE : public MESSAGE { // Can possibly collapse this in the future with TESLA_MESSAGE
+struct INIT_MESSAGE : public MESSAGE {
     enum INIT_MODE {
         AUTH,
         TESLA

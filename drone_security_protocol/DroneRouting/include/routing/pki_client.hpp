@@ -25,8 +25,8 @@ public:
 
     using CertStatusCallback = std::function<void(bool)>;
     
-    PKIClient(std::string_view drone_id, 
-              std::string_view manufacturer_id,
+    PKIClient(std::string_view serial, 
+              std::string_view eeprom_id,
               CertStatusCallback status_callback = nullptr);
               
     PKIClient(const PKIClient&) = delete;
@@ -45,14 +45,14 @@ public:
     void waitForCertificate(std::atomic<bool>& running);
 
     CertificateData getCertificate() const noexcept { return m_certificate; }
-    void storePendingChallenge(const std::string& drone_id, const std::vector<uint8_t>& challenge);
+    void storePendingChallenge(const std::string& serial, const std::vector<uint8_t>& challenge);
 
 private:
     CertificateData m_certificate;
     [[nodiscard]] bool requestCertificate();
     
-    std::string drone_id_;
-    std::string manufacturer_id_;
+    std::string serial_;
+    std::string eeprom_id_;
     std::atomic<bool> has_valid_cert_;
     std::vector<uint8_t> cert_data_;
     std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> key_;

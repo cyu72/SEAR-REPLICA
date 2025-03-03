@@ -31,7 +31,10 @@ struct ROUTING_TABLE_ENTRY {
         this->tesla_disclosure_time = std::chrono::seconds(0);
     }
 
+<<<<<<< HEAD
     
+=======
+>>>>>>> e2255450aab6a799ed3404f06f1d3756fbacb4b5
     ROUTING_TABLE_ENTRY(string destAddr, string intermediateAddr, int seqNum, int cost, std::chrono::system_clock::time_point ttl){
         this->destAddr = destAddr;
         this->intermediateAddr = intermediateAddr;

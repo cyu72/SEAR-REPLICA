@@ -12,6 +12,9 @@ echo "Stopping DHCP service if running..."
 echo "Restoring normal WiFi configuration..."
 sudo wpa_cli reconfigure
 
+sudo systemctl enable NetworkManager
+sudo systemctl start NetworkManager
+
 echo "Restarting networking service..."
 sudo systemctl restart networking
 

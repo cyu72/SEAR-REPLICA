@@ -3,7 +3,7 @@
 drone::drone(int port, int nodeID) : udpInterface(BRDCST_PORT), tcpInterface(port) {
     logger = createLogger(fmt::format("drone_{}", nodeID));
 
-    this->addr = "drone" + std::to_string(nodeID) + "-service.default";
+    this->addr = std::getenv("NODE_IP") ? std::string(std::getenv("NODE_IP")) : throw std::runtime_error("NODE_IP not set");
     this->port = port;
     this->nodeID = nodeID;
     this->seqNum = 1;
@@ -286,7 +286,6 @@ void drone::routeErrorHandler(json& data){
             
             std::lock_guard<std::mutex> rtLock(routingTableMutex); // remove entry from routing table
             this->tesla.routingTable.remove(msg.retAddr);
-
         } catch (std::runtime_error& e) {
             logger->debug("End of backpropagation reached.");
         }
@@ -774,7 +773,6 @@ void drone::neighborDiscoveryHelper(){
     logger->info("Broadcasting TESLA Init Message: {}", msg);
     udpInterface.broadcast(msg);
     msg = INIT_MESSAGE(this->hashChainCache.front(), this->addr, true).serialize();
-    logger->info("Broadcasting Authenticator Init Message: {}", msg);
 
     while(true){
         sleep(5);
@@ -811,7 +809,6 @@ void drone::neighborDiscoveryFunction(){
     for (int i = 0; i < hashIterations; ++i) {
         hash = sha256(hash);
         this->hashChainCache.push_front(hash);
-        // cout << "Hash: " << hash << endl;
     }
 
     auto resetTableTimer = std::chrono::steady_clock::now();
@@ -879,11 +876,9 @@ void drone::start() {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         
-
         if (ipc_server) {
             ipc_server->stop();
         }
-        // Join all threads before destruction
         for (auto& thread : threads) {
             if (thread.joinable()) {
                 thread.join();

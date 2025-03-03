@@ -11,7 +11,6 @@ class PKIConfig:
     SUPPORTED_ALGORITHMS = ['ES256']  # ECDSA with SHA-256
     CRL_UPDATE_INTERVAL = timedelta(hours=24)
     
-    # Bootstrapping configuration
     BOOTSTRAP_DURATION = timedelta(minutes=2)  # Duration of bootstrapping phase
     BOOTSTRAP_START_TIME: Optional[datetime] = None  # Will be set when PKI is initialized
     

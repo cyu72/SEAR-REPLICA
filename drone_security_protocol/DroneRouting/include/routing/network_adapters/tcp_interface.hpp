@@ -74,7 +74,7 @@ public:
 
         int status = getaddrinfo(host.c_str(), std::to_string(port).c_str(), &hints, &result);
         if (status != 0) {
-            // std::cout << "DEBUG: Error resolving host: " << gai_strerror(status) << std::endl;
+            std::cout << "DEBUG: Error resolving host: " << gai_strerror(status) << std::endl;
             return -1; // Failure: Error resolving host
         }
 

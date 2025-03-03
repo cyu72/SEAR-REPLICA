@@ -2,7 +2,8 @@
 CMakeFiles
 build/
 Testing/
-docker-compose.yml
+docker/
+kubernetes/
 Makefile
 .DS_STORE
 .venv

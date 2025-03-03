@@ -32,17 +32,18 @@
 #include <ctime>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/fmt/chrono.h>
 #include <atomic>
 #include <condition_variable>
 #include <future>
 #include <set>
 #include "hashTree.hpp"
 #include "messages.hpp"
-#include <spdlog/fmt/chrono.h>
 #include "ipc_server.hpp"
 #include "routingMap.hpp"
 #include "routingTableEntry.hpp"
-#include "network_adapters/kube_udp_interface.hpp"
+#include "pki_client.hpp"
+#include "network_adapters/ad_hoc_udp_interface.hpp"
 #include "network_adapters/tcp_interface.hpp"
 
 using json = nlohmann::json;
@@ -212,6 +213,8 @@ class drone {
         void neighborDiscoveryFunction();
         void neighborDiscoveryHelper();
         void processPendingRoutes();
+        void leaveSwarm();
+        void leaveHandler(json& data);
         string getHashFromChain(unsigned long seqNum, unsigned long hopCount);
 
         const uint8_t max_hop_count = std::stoul((std::getenv("MAX_HOP_COUNT"))); // Maximum number of nodes we can/allow route through

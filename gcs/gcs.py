@@ -11,6 +11,7 @@ from crl_manager import CRLManager
 from config import PKIConfig
 from flask import Flask, request, jsonify
 from pki_gen import PKISetup
+import json
 
 class GCS:
     def __init__(self, base_dir: str = "certs"):
@@ -26,7 +27,8 @@ class GCS:
         self.private_key, self.public_key = self.crypto_utils.generate_key_pair()
         self._ensure_pki_infrastructure()
         self._load_pki_materials()
-        self.allowed_drones = set()
+        self.allowed_devices = set()
+        self.load_allowed_devices('allowed_devices.json')
         self._start_bootstrap_phase()
 
     def _start_bootstrap_phase(self):
@@ -36,30 +38,71 @@ class GCS:
         self.logger.info(f"Bootstrap phase will end at {self.config.BOOTSTRAP_START_TIME + self.config.BOOTSTRAP_DURATION}")
 
     def setup_routes(self):
-            @self.app.route('/request_certificate', methods=['POST'])
-            def handle_cert_request():
-                try:
-                    data = request.get_json()
-                    drone_id, manufacturer_id, csr_pem = data.get('drone_id'), data.get('manufacturer_id'), data.get('csr')
+        @self.app.route('/request_certificate', methods=['POST'])
+        def handle_cert_request():
+            try:
+                data = request.get_json()
+                serial_number, eeprom_id, csr_pem = data.get('serial_number'), data.get('eeprom_id'), data.get('csr')
+                
+                if not all([serial_number, eeprom_id, csr_pem]):
+                    return jsonify({'status': 'error', 'message': 'Missing fields'}), 400
                     
-                    if not all([drone_id, manufacturer_id, csr_pem]):
-                        return jsonify({'status': 'error', 'message': 'Missing fields'}), 400
-                        
-                    csr = x509.load_pem_x509_csr(csr_pem.encode('utf-8'))
+                csr = x509.load_pem_x509_csr(csr_pem.encode('utf-8'))
+                
+                if not self.skip_verification:
+                    try:
+                        csr.public_key().verify(csr.signature, csr.tbs_certrequest_bytes, ec.ECDSA(hashes.SHA256()))
+                        if not self.verify_device_identity(serial_number, eeprom_id):
+                            return jsonify({'status': 'error', 'message': 'Identity verification failed'}), 403
+                    except Exception:
+                        return jsonify({'status': 'error', 'message': 'Invalid CSR'}), 400
+                
+                cert = self.generate_certificate(csr, serial_number, eeprom_id)
+                return jsonify({'status': 'success', 'certificate': self.format_certificate_response(cert, serial_number, eeprom_id)}), 200
                     
-                    if not self.skip_verification:
-                        try:
-                            csr.public_key().verify(csr.signature, csr.tbs_certrequest_bytes, ec.ECDSA(hashes.SHA256()))
-                            if not self.verify_drone_identity(drone_id, manufacturer_id):
-                                return jsonify({'status': 'error', 'message': 'Identity verification failed'}), 403
-                        except Exception:
-                            return jsonify({'status': 'error', 'message': 'Invalid CSR'}), 400
-                    
-                    cert = self.generate_certificate(csr, drone_id, manufacturer_id)
-                    return jsonify({'status': 'success', 'certificate': self.format_certificate_response(cert, drone_id, manufacturer_id)}), 200
-                    
-                except Exception as e:
-                    return jsonify({'status': 'error', 'message': str(e)}), 500
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': str(e)}), 500
+
+    def verify_device_identity(self, serial_number: str, eeprom_id: str) -> bool:
+        """Verify the device's identity against allowed devices"""
+        return (serial_number, eeprom_id) in self.allowed_devices
+
+    def format_certificate_response(self, cert: x509.Certificate, serial_number: str, eeprom_id: str) -> Dict[str, Any]:
+        key_usage = cert.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
+        return {
+            'certificate_data': {
+                'pem': cert.public_bytes(serialization.Encoding.PEM).decode('utf-8'),
+                'serial_number': str(cert.serial_number),
+                'public_key': cert.public_key().public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                ).decode('utf-8'),
+                'ca_public_key': self.ca_cert.public_bytes(
+                    encoding=serialization.Encoding.PEM
+                ).decode('utf-8')
+            },
+            'validity': {
+                'not_before': cert.not_valid_before_utc.isoformat(),
+                'not_after': cert.not_valid_after_utc.isoformat()
+            },
+            'subject': {
+                'serial_number': serial_number,
+                'eeprom_id': eeprom_id,
+                'common_name': self._get_name_attribute(cert.subject, NameOID.COMMON_NAME)
+            },
+            'issuer': {
+                'common_name': self._get_name_attribute(cert.issuer, NameOID.COMMON_NAME),
+                'organization': self._get_name_attribute(cert.issuer, NameOID.ORGANIZATION_NAME)
+            },
+            'key_usage': {
+                'digital_signature': key_usage.digital_signature,
+                'key_encipherment': key_usage.key_encipherment
+            },
+            'metadata': {
+                'issued_at': datetime.now(timezone.utc).isoformat(),
+                'version': cert.version.name
+            }
+        }
 
     def _get_name_attribute(self, name: x509.Name, oid: NameOID) -> Optional[str]:
         """Safely extract name attribute from certificate subject/issuer"""
@@ -120,28 +163,16 @@ class GCS:
             self.logger.error(f"Failed to load PKI materials: {str(e)}")
             raise
 
-    def _initialize_test_drones(self):
-        """Initialize test drones for development and testing"""
-        test_drones = [
-            ("TEST001", "TESTMFG"),
-            ("TESTDRONE", "TESTMANUF"),
-        ]
-        
-        for drone_id, manufacturer_id in test_drones:
-            self.add_allowed_drone(drone_id, manufacturer_id)
-            self.logger.info(f"Added test drone {drone_id}/{manufacturer_id} to allowed drones")
+    def verify_device_identity(self, serial_number: str, eeprom_id: str) -> bool:
+        """Verify the device's identity against allowed devices"""
+        return (serial_number, eeprom_id) in self.allowed_devices
 
-    def verify_drone_identity(self, drone_id: str, manufacturer_id: str) -> bool:
-        """Verify the drone's identity against allowed drones"""
-        return (drone_id, manufacturer_id) in self.allowed_drones
+    """""Uncomment lines if using inital boostrapping phase"""""
+    # def add_allowed_device(self, serial_number: str, eeprom_id: str):
+    #     self.allowed_devices.add((serial_number, eeprom_id))
 
-    def add_allowed_drone(self, drone_id: str, manufacturer_id: str):
-        """Add a drone to the allowed drones list"""
-        self.allowed_drones.add((drone_id, manufacturer_id))
-
-    def remove_allowed_drone(self, drone_id: str, manufacturer_id: str):
-        """Remove a drone from the allowed drones list"""
-        self.allowed_drones.discard((drone_id, manufacturer_id))
+    # def remove_allowed_device(self, serial_number: str, eeprom_id: str):
+    #     self.allowed_devices.discard((serial_number, eeprom_id))
 
     def verify_drone_certificate(self, cert_data: bytes) -> bool:
         """Verify a drone's certificate"""
@@ -189,7 +220,7 @@ class GCS:
             self.logger.error(f"Certificate verification failed: {str(e)}")
             return False
 
-    def format_certificate_response(self, cert: x509.Certificate, drone_id: str, manufacturer_id: str) -> Dict[str, Any]:
+    def format_certificate_response(self, cert: x509.Certificate, serial_number: str, eeprom_id: str) -> Dict[str, Any]:
         key_usage = cert.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
         return {
             'certificate_data': {
@@ -208,8 +239,8 @@ class GCS:
                 'not_after': cert.not_valid_after_utc.isoformat()
             },
             'subject': {
-                'drone_id': drone_id,
-                'manufacturer_id': manufacturer_id,
+                'serial_number': serial_number,
+                'eeprom_id': eeprom_id,
                 'common_name': self._get_name_attribute(cert.subject, NameOID.COMMON_NAME)
             },
             'issuer': {
@@ -245,6 +276,49 @@ class GCS:
                 decipher_only=False
             ), critical=True)
         return builder.sign(private_key=self.ca_private_key, algorithm=hashes.SHA256())
+    
+    def load_allowed_devices(self, filepath: str) -> None:
+        """Load allowed devices from a JSON file containing serial numbers and EEPROM IDs"""
+        try:
+            with open(filepath, 'r') as f:
+                devices = json.load(f)
+                self.allowed_devices = {(d['serial_number'], d['eeprom_id']) for d in devices}
+                
+            self.logger.info(f"Successfully loaded {len(self.allowed_devices)} devices:")
+            for serial_number, eeprom_id in self.allowed_devices:
+                self.logger.info(f"Device: Serial Number = {serial_number}, EEPROM ID = {eeprom_id}")
+                
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            self.logger.error(f"Failed to load allowed devices: {str(e)}")
+            self.allowed_devices = set()
 
     def run(self, host='0.0.0.0', port=5000):
         self.app.run(host=host, port=port)
+
+    def stop(self):
+        """Stop the GCS server and perform cleanup"""
+        try:
+            # Save current CRL state before shutdown
+            crl_path = self.base_dir / "crl" / "drone_crl.json"
+            self.crl_manager.save_crl_to_file(str(crl_path))
+            self.logger.info("Saved CRL state")
+            
+            # Clear sensitive data from memory
+            self.private_key = None
+            self.public_key = None
+            self.ca_private_key = None
+            self.allowed_drones.clear()
+            
+            # Shut down Flask server
+            func = request.environ.get('werkzeug.server.shutdown')
+            if func is None:
+                self.logger.warning("Not running with Werkzeug server, Flask shutdown may not be clean")
+            else:
+                func()
+                self.logger.info("Flask server shutdown initiated")
+                
+            self.logger.info("GCS server stopped successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error during GCS shutdown: {str(e)}")
+            raise

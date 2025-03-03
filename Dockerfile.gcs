@@ -22,11 +22,9 @@ COPY gcs/config.py \
      gcs/crypto_utils.py \
      gcs/gcs.py \
      gcs/main.py \
-     gcs/messages.py \
      gcs/pki_gen.py \
      ./
 
-# Copy existing certificates if they exist
 COPY gcs/certs/ ./certs/
 
 ENV PATH="/app/venv/bin:$PATH" \
