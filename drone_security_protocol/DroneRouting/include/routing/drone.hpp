@@ -42,7 +42,7 @@
 #include "ipc_server.hpp"
 #include "routingMap.hpp"
 #include "routingTableEntry.hpp"
-#include "network_adapters/ad_hoc_udp_interface.hpp"
+#include "network_adapters/kube_udp_interface.hpp"
 #include "network_adapters/tcp_interface.hpp"
 
 using json = nlohmann::json;
