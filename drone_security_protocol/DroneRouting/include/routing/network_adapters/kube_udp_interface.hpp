@@ -8,74 +8,115 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <stdexcept>
+#include <unordered_map>
+#include <iostream>
 
 class UDPInterface {
 public:
     UDPInterface(int port) {
-        if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-            throw std::runtime_error("UDP socket creation failed");
-        }
+        try {
+            if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+                std::cerr << "UDP socket creation failed: " << strerror(errno) << std::endl;
+                return;
+            }
 
-        memset(&server_addr, 0, sizeof(server_addr));
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_addr.s_addr = INADDR_ANY;
-        server_addr.sin_port = htons(port);
+            int reuse = 1;
+            int bufSize = 262144;
+            if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0 ||
+                setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &bufSize, sizeof(bufSize)) < 0) {
+                std::cerr << "Socket option failed: " << strerror(errno) << std::endl;
+            }
 
-        if (bind(sock, (const struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-            close(sock);
-            throw std::runtime_error("UDP bind failed");
+            memset(&server_addr, 0, sizeof(server_addr));
+            server_addr.sin_family = AF_INET;
+            server_addr.sin_port = htons(port);
+            server_addr.sin_addr.s_addr = INADDR_ANY;
+
+            if (bind(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+                std::cerr << "UDP bind failed: " << strerror(errno) << std::endl;
+                close(sock);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Init error: " << e.what() << std::endl;
         }
     }
 
-    ~UDPInterface() {
-        close(sock);
-    }
+    ~UDPInterface() { if (sock >= 0) close(sock); }
 
     void broadcast(const std::string& msg) {
-        int swarmSize = droneCount;
-        for (int i = 1; i <= swarmSize; ++i) {
-            string containerName = "drone" + std::to_string(i) + "-service.default";
-            sendTo(containerName, msg, 65457);
+        try {
+            if (cached_addrs.empty()) {
+                for (int i = 1; i <= droneCount; ++i) {
+                    cacheAddress("drone" + std::to_string(i) + "-service.default", 65457);
+                }
+            }
+
+            for (const auto& [key, addr] : cached_addrs) {
+                if (sendto(sock, msg.c_str(), msg.size(), 0, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+                    std::cerr << "Send failed to " << key << ": " << strerror(errno) << std::endl;
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Broadcast error: " << e.what() << std::endl;
         }
     }
 
     void sendTo(const std::string& containerName, const std::string& msg, int port) {
-        struct addrinfo hints, *result;
-        memset(&hints, 0, sizeof(hints));
-        hints.ai_family = AF_INET;
-        hints.ai_socktype = SOCK_DGRAM;
+        try {
+            string key = containerName + ":" + std::to_string(port);
+            if (cached_addrs.find(key) == cached_addrs.end()) {
+                cacheAddress(containerName, port);
+            }
 
-        int status = getaddrinfo(containerName.c_str(), std::to_string(port).c_str(), &hints, &result);
-        if (status != 0) {
-            throw std::runtime_error("Error resolving host: " + std::string(gai_strerror(status)));
+            if (sendto(sock, msg.c_str(), msg.size(), 0, 
+                      (struct sockaddr*)&cached_addrs[key], sizeof(sockaddr_in)) < 0) {
+                std::cerr << "SendTo failed for " << containerName << ": " << strerror(errno) << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "SendTo error: " << e.what() << std::endl;
         }
-
-        ssize_t bytesSent = sendto(sock, msg.c_str(), msg.size(), 0, result->ai_addr, result->ai_addrlen);
-        if (bytesSent == -1) {
-            freeaddrinfo(result);
-            throw std::runtime_error("Error sending data: " + std::string(strerror(errno)));
-        }
-
-        freeaddrinfo(result);
     }
 
     std::string receiveFrom(sockaddr_in& client_addr) {
-        char buffer[1024];
-        socklen_t addr_len = sizeof(client_addr);
-
-        int n = recvfrom(sock, buffer, sizeof(buffer) - 1, 0, (struct sockaddr *)&client_addr, &addr_len);
-        if (n < 0) {
-            throw std::runtime_error("recvfrom failed: " + std::string(strerror(errno)));
+        try {
+            char buffer[4096];
+            socklen_t addr_len = sizeof(client_addr);
+            int n = recvfrom(sock, buffer, sizeof(buffer) - 1, 0, 
+                           (struct sockaddr*)&client_addr, &addr_len);
+            
+            if (n < 0) {
+                std::cerr << "Receive failed: " << strerror(errno) << std::endl;
+                return "";
+            }
+            buffer[n] = '\0';
+            return buffer;
+        } catch (const std::exception& e) {
+            std::cerr << "Receive error: " << e.what() << std::endl;
+            return "";
         }
-
-        buffer[n] = '\0';
-        return std::string(buffer);
     }
 
 private:
-    int sock;
+    int sock = -1;
     struct sockaddr_in server_addr;
-    int droneCount = std::stoi(std::getenv("DRONE_COUNT"));
+    std::unordered_map<string, struct sockaddr_in> cached_addrs;
+    const int droneCount = std::stoi(std::getenv("DRONE_COUNT"));
+
+    void cacheAddress(const std::string& containerName, int port) {
+        struct addrinfo hints = {}, *result;
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+
+        string key = containerName + ":" + std::to_string(port);
+        int status = getaddrinfo(containerName.c_str(), std::to_string(port).c_str(), &hints, &result);
+        
+        if (status == 0) {
+            cached_addrs[key] = *(struct sockaddr_in*)result->ai_addr;
+            freeaddrinfo(result);
+        } else {
+            std::cerr << "DNS resolution failed for " << containerName << ": " << gai_strerror(status) << std::endl;
+        }
+    }
 };
 
 #endif

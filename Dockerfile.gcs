@@ -23,7 +23,6 @@ COPY gcs/config.py \
      gcs/gcs.py \
      gcs/main.py \
      gcs/pki_gen.py \
-     gcs/allowed_devices.json \
      ./
 
 COPY gcs/certs/ ./certs/

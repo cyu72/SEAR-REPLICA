@@ -7,3 +7,4 @@ kubernetes/
 Makefile
 .DS_STORE
 .venv
+kubernetes/

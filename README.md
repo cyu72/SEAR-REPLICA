@@ -29,33 +29,6 @@ docker build -t cyu72/<image-name>:latest -f <path-to-dockerfile> .
 docker push cyu82/repository:tag
 ```
 
-### Minikube Startup with Calico and MetalLB
-
-1. Start Minikube with Calico:
-   ```
-   minikube start --network-plugin=cni --cni=calico
-   ```
-
-2. Apply Calico and MetalLB manifests:
-   ```
-   kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/calico.yaml
-   kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.12/config/manifests/metallb-native.yaml
-   ```
-
-3. Enable MetalLB addon:
-   ```
-   minikube addons enable metallb
-   ```
-
-4. Check if the cluster is ready:
-   ```
-   while true; do kubectl get pods -l k8s-app=calico-node -A; sleep 2; done
-   ```
-   Or on Linux:
-   ```
-   watch kubectl get pods -l k8s-app=calico-node -A
-   ```
-
 ## Kubernetes Commands
 
 | Action | Command |
@@ -66,6 +39,7 @@ docker push cyu82/repository:tag
 | Apply Kubernetes file | `kubectl apply -f [deployment.yaml]` |
 | Connect to container | `kubectl attach <container-name>` |
 | Connect interactively | `kubectl attach -it <container-name>` |
+| Connect to specific pod | `kubectl attach <container-name> -c <pod-name>` |
 
 ## Helpful Resources
 

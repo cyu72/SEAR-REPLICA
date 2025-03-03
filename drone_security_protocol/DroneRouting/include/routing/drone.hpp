@@ -42,7 +42,6 @@
 #include "ipc_server.hpp"
 #include "routingMap.hpp"
 #include "routingTableEntry.hpp"
-#include "pki_client.hpp"
 #include "network_adapters/ad_hoc_udp_interface.hpp"
 #include "network_adapters/tcp_interface.hpp"
 
@@ -232,16 +231,6 @@ class drone {
         string generate_nonce(const size_t length = 16);
 
         std::shared_ptr<spdlog::logger> logger;
-
-        std::unique_ptr<PKIClient> pki_client;
-        std::set<std::string> validatedNodes;
-        std::mutex validationMutex;
-        std::promise<void> init_promise;
-        bool cert_received = false;
-        bool isValidatedSender(const std::string& sender);
-        void markSenderAsValidated(const std::string& sender);
-        std::vector<uint8_t> generateChallengeData(size_t length = 32);
-        void challengeResponseHandler(json& data);
 
         void handleIPCMessage(const std::string&);
 };

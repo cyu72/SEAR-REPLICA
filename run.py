@@ -17,12 +17,11 @@ colorama.init(autoreset=True)
 matrix = []
 
 parser = argparse.ArgumentParser(description='TBD')
-parser.add_argument('--drone_count', type=int, default=5, help='Specify number of drones in simulation')
+parser.add_argument('--drone_count', type=int, default=26, help='Specify number of drones in simulation')
 parser.add_argument('--startup', action='store_true', help='Complete initial startup process (minikube)')
 parser.add_argument('--tesla_disclosure_time', type=int, default=10, help='Disclosure period in seconds of every TESLA key disclosure message')
-parser.add_argument('--max_hop_count', type=int, default=7, help='Maximium number of nodes we can route messages through')
+parser.add_argument('--max_hop_count', type=int, default=25, help='Maximium number of nodes we can route messages through')
 parser.add_argument('--max_seq_count', type=int, default=50, help='Maximium number of sequence numbers we can store')
-parser.add_argument('--stable', action='store_true', help='Use stable version of the drone image')
 parser.add_argument('--timeout', type=int, default=30, help='Timeout for each request')
 parser.add_argument('--grid_size', type=int, default=12, help='Defines nxn sized grid.')
 parser.add_argument('--grid_type', choices=['random', 'hardcoded'], default='hardcoded', help='Choose between random or hardcoded grid')
@@ -47,15 +46,15 @@ def generate_random_matrix(n, numDrones):
 
 def generate_hardcoded_matrix(n, numDrones):
     array = [
-        [1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 14, 15, 16, 17, 18, 0],
+        [0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 19, 0],
+        [0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0],
+        [0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 21, 0],
+        [0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 22, 0],
+        [0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 23, 0],
+        [3, 4, 1, 2, 6, 7, 8, 0, 0, 0, 24, 0],
+        [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 26, 0],
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -225,33 +224,52 @@ def get_neighbors(matrix, i, j):
         neighbors.append(matrix[i][j+1])
     return neighbors
 
-def create_network_policy(drone_number, neighbors):
-    return f"""apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ingress-selector{drone_number}
-spec:
-  podSelector:
-    matchLabels:
-      app: drone{drone_number}
-      tier: drone
-  ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app: gcs
-  - from:
-    - podSelector:
-        matchExpressions:
-        - {{key: app, operator: In, values: [{', '.join(['drone' + str(neighbor) for neighbor in neighbors])}]}}"""
-
-def update_network_policies(matrix):
+def create_network_policies(matrix):
     policies = []
     for i in range(len(matrix)):
         for j in range(len(matrix[i])):
             if matrix[i][j] != 0:
                 neighbors = get_neighbors(matrix, i, j)
-                policy = create_network_policy(matrix[i][j], neighbors)
+                policy = f"""apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ingress-selector{matrix[i][j]}
+spec:
+  podSelector:
+    matchLabels:
+      app: drone{matrix[i][j]}
+      tier: drone
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: gcs
+    ports:
+    - protocol: TCP
+      port: 65456
+    - protocol: UDP
+      port: 65457
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 60137
+  - from:
+    - podSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values: [{', '.join([f'drone{n}' for n in neighbors])}]
+    ports:
+    - protocol: TCP
+      port: 65456
+    - protocol: UDP
+      port: 65457
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 60137"""
                 policies.append(policy)
     
     with open('etc/kubernetes/deploymentNetworkPolicy.yml', 'w') as file:
@@ -305,7 +323,7 @@ def update_coords():
             return jsonify({"error": f"Position ({to_i}, {to_j}) is not empty"}), 400
         
         matrix = move_drone(matrix, drone, (to_i, to_j))
-        update_network_policies(matrix)
+        create_network_policies(matrix)
         print(f"Drone {drone} moved to position ({to_i}, {to_j})")
         print("Matrix updated and network policies updated.")
         print_matrix(matrix)
@@ -340,8 +358,7 @@ def main():
     global matrix, processes, threads
 
     droneNum = args.drone_count
-    droneImage = "cyu72/drone:stable" if args.stable else "cyu72/drone:latest"
-    gcsImage = "cyu72/gcs:latest"
+    droneImage = "cyu72/sear:simulation-terminal"
 
     controller_addr = input("Enter the controller address: ")
 
@@ -370,8 +387,9 @@ metadata:
 spec:
   hostname: drone{num}
   containers: 
-    - name: drone{num}
+    - name: logs
       image: {droneImage}
+      imagePullPolicy: Always
       stdin: true
       tty: true
       env:
@@ -379,8 +397,6 @@ spec:
           value: "{num}"
         - name: PORT
           value: "65456"
-        - name: NODE_ID
-          value: "{num}"
         - name: TESLA_DISCLOSE
           value: "{args.tesla_disclosure_time}"
         - name: MAX_HOP_COUNT
@@ -407,6 +423,21 @@ spec:
         - name: start-port
           protocol: TCP
           containerPort: 8080
+        - name: ipc
+          protocol: TCP
+          containerPort: 60137
+
+    - name: terminal
+      image: cyu72/drone:latest
+      imagePullPolicy: Always
+      command: ["./drone_app", "--terminal"]
+      stdin: true
+      tty: true
+      env:
+        - name: ROUTING_HOST
+          value: "localhost"
+        - name: NODE_ID
+          value: "{num}"
 """
             service = f"""apiVersion: v1
 kind: Service
@@ -439,58 +470,6 @@ spec:
             file.write(delim)
             nodePort += 1
 
-        gcs = f"""apiVersion: v1
-kind: Pod
-metadata:
-  name: gcs
-  namespace: default
-  labels:
-    app: gcs
-    tier: drone
-spec:
-  hostname: gcs
-  containers: 
-    - name: gcs
-      image: {gcsImage}
-      stdin: true
-      tty: true
-      env:
-        - name: SKIP_VERIFICATION
-          value: "{args.SKIP_VERIFICATION}"
-      ports:
-        - name: main-port
-          protocol: TCP
-          containerPort: 65456
-        - name: udp-test-port
-          protocol: UDP
-          containerPort: 65457
-        - name: flask-port
-          protocol: TCP
-          containerPort: 5000"""
-        
-        gcs_service = f"""apiVersion: v1
-kind: Service
-metadata:
-  name: gcs-service
-spec:
-  type: LoadBalancer
-  selector:
-    app: gcs
-    tier: drone
-  ports:
-  - name: gcs-port
-    protocol: TCP
-    port: 80
-    targetPort: 65456
-  - name: udp-test-port
-    protocol: UDP
-    port: 65457
-    targetPort: 65457
-  - name: flask-port
-    protocol: TCP
-    port: 5000
-    targetPort: 5000"""
-        
         configMap = f"""apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -505,7 +484,7 @@ data:
       - 192.168.1.101-192.168.1.150
 """
         
-        file.write(gcs + "\n" + delim + gcs_service + "\n" + delim + configMap + "\n")
+        file.write(configMap + "\n")
         file.close()
         
     valid_config = False
@@ -524,59 +503,10 @@ data:
         user_input = input("Is this a valid configuration? (yes/no): ")
         if user_input.lower() == "yes":
             valid_config = True
+            create_network_policies(matrix)
 
     if (args.startup):
         time.sleep(45)
-
-    with open('etc/kubernetes/deploymentNetworkPolicy.yml', 'w') as file:
-        for i in range(len(matrix)):
-            for j in range(len(matrix[i])):
-                if matrix[i][j] != 0:
-                    neighbors = []
-                    if i > 0 and matrix[i-1][j] != 0:
-                        neighbors.append(matrix[i-1][j])
-                    if i < len(matrix)-1 and matrix[i+1][j] != 0:
-                        neighbors.append(matrix[i+1][j])
-                    if j > 0 and matrix[i][j-1] != 0:
-                        neighbors.append(matrix[i][j-1])
-                    if j < len(matrix[i])-1 and matrix[i][j+1] != 0:
-                        neighbors.append(matrix[i][j+1])
-
-                    print(f"Neighbors of drone{matrix[i][j]}: {neighbors}")
-                    if neighbors:
-                        networkPolicy = f"""apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ingress-selector{matrix[i][j]}
-spec:
-  podSelector:
-    matchLabels:
-      app: drone{matrix[i][j]}
-      tier: drone
-  ingress:
-  - from:
-    - podSelector:
-        matchExpressions:
-        - {{key: app, operator: In, values: [gcs, gcs-service, {', '.join(['drone' + str(neighbor) for neighbor in neighbors])}]}}"""
-                        file.write(networkPolicy + "\n" + delim)
-                    else:
-                        networkPolicy = f"""apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ingress-selector{matrix[i][j]}
-spec:
-  podSelector:
-    matchLabels:
-      app: drone{matrix[i][j]}
-      tier: drone
-  ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app: gcs-service"""
-                        file.write(networkPolicy + "\n" + delim)
-
-    file.close()
 
     command = "kubectl apply -f etc/kubernetes/droneDeployment.yml"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -667,7 +597,7 @@ spec:
                 continue
             
             matrix = move_drone(matrix, drone, (to_i, to_j))
-            update_network_policies(matrix)
+            create_network_policies(matrix)
             print("Network policies updated.")
         except ValueError as e:
             print(f"Error: {str(e)}")

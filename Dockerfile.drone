@@ -38,7 +38,6 @@ COPY --from=builder /usr/local/lib/libcpr.so* /usr/local/lib/
 
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
-# Security setup
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
 RUN ldconfig /usr/local/lib
